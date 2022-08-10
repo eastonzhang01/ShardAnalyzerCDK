@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>ShardAnalyzer</title>
+	<link rel="stylesheet" href="css/style.css" />
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/css/bootstrap.min.css" rel="stylesheet"
+		integrity="sha384-0evHe/X+R7YkIZDRvuzKMRqM+OrBnVFBL6DOitfPri4tjfHxaWutUpFmBp4vmVor" crossorigin="anonymous">
+	<script type="text/javascript" src="declare.js"></script>
+	<script>
+		// formatBytes referenced: https://gist.github.com/zentala/1e6f72438796d74531803cc3833c039c#file-formatbytes-js 
+		function formatBytes(bytes, decimals) {
+			if (bytes == 0) return '0 Bytes';
+			var k = 1024,
+				dm = decimals || 2,
+				sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'],
+				i = Math.floor(Math.log(bytes) / Math.log(k));
+			return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+		}
+
+		var callAPI = (zones, cluster, customer, search, size, endpoint, username, password, rawInput) => {
+			// make availabilityZones and Size into ints
+			var zonesInt = parseInt(zones);
+			var sizeInt = parseInt(size);
+
+			// convert search into bool
+			// only true if user types in true
+			var searchBool = (search.toLowerCase() === 'true');
+
+			// instantiate a headers object
+			var myHeaders = new Headers();
+			// add content type header to object
+			myHeaders.append("Content-Type", "application/json");
+			myHeaders.append("Accept", "application/json");
+			// using built in JSON utility package turn object to string and store in a variable
+			var raw = JSON.stringify({
+				"availabilityzones": zonesInt,
+				"clustername": cluster,
+				"clientname": customer,
+				"search": searchBool,
+				"targetsize": sizeInt,
+				"domainendpoint": endpoint,
+				"username": username,
+				"password": password,
+				"rawInput": rawInput
+			});
+			// create a JSON object with parameters for API call and store in a variable
+			var requestOptions = {
+				mode: 'cors',
+				method: 'POST',
+				headers: myHeaders,
+				body: raw,
+				redirect: 'follow'
+			};
+			// 'https://inkk2m9c29.execute-api.us-west-2.amazonaws.com/test/shardtest2'
+			fetch(jsonstr, requestOptions)
+				.then(res => {
+					if (res.ok) {
+						return res.json()
+					} else {
+						return res.text().then(text => { throw new Error(text) })
+					}
+				})
+				.then(data => {
+					//displayContainer.innerHTML= JSON.stringify(data);
+					console.log(data)
+					cleartableRows()
+					tableCaption(data.title)
+					buildTable(data)
+					largeIndicesTable(data.large_indices)
+					buildNodeTable(data.node_stats)
+					listEmptyIndices(data.empty_indices)
+					patternRecommendBuilder(data.index_pattern_recommendation_rollup)
+				})
+				.catch(error => {
+					console.log(jsonstr)
+					cleartableRows()
+					displayError(error.message)
+					console.log(error.message)
+				});
+		}
+		function clearForm() {
+			document.getElementById("mainInputForm").reset();
+		}
+		function passwordShowFunc() {
+			let passwordForm = document.getElementById("password")
+			if (passwordForm.type === "password") {
+				passwordForm.type = "text";
+			} else {
+				passwordForm.type = "password";
+			}
+		}
+		function displayError(errorMessage) {
+			// Get Body Container
+			let bodyContainer = document.getElementById("bodyContainer");
+
+			// create a new row
+			let rowDiv = document.createElement('div');
+			// add class to row 
+			rowDiv.classList.add('row', 'rowBodyTable');
+			// append row to bodyContainer
+			bodyContainer.appendChild(rowDiv)
+
+			// create text-box div 
+			let textBoxDiv = document.createElement('div');
+			// add classes to div
+			textBoxDiv.classList.add('col-12', 'errorTextBox');
+			// append div to row 
+			rowDiv.appendChild(textBoxDiv);
+
+			// Add text to Error message
+			textBoxDiv.innerHTML = errorMessage
+		}
+		function tableCaption(title) {
+			var reportCaption = document.getElementById("reportCaption");
+			reportCaption.innerHTML = "Cluster Report Table for " + title
+		}
+		function largeIndicesTable(largeIndicesArray) {
+			// only create table if array is not null
+			if (largeIndicesArray != null) {
+				// Get Body Container
+				var bodyContainer = document.getElementById("bodyContainer");
+
+				// create a new row
+				var rowDiv = document.createElement('div');
+				// add class to row 
+				rowDiv.classList.add('row', 'rowBodyTable');
+				// append row to bodyContainer
+				bodyContainer.appendChild(rowDiv)
+
+				// create table div
+				var mainTableDiv = document.createElement('div');
+				// add classes to div 
+				mainTableDiv.classList.add('col-12', 'displayTableDiv')
+				// append div to row 
+				rowDiv.appendChild(mainTableDiv)
+
+				// create table
+				var table = document.createElement('table');
+				// add classes to table
+				table.classList.add('displayTable')
+				// append table to div
+				mainTableDiv.appendChild(table)
+
+				// create Title caption for table
+				var titleCaption = document.createElement('caption');
+				// write in caption 
+				titleCaption.innerHTML = "Indices with Shards Greater than 50GB"
+				// append caption to table
+				table.appendChild(titleCaption)
+
+				// create count caption
+				var countCaption = document.createElement('caption');
+				// write in caption
+				countCaption.innerHTML = "Count: " + largeIndicesArray.length
+				// append caption to table
+				table.appendChild(countCaption)
+
+				// create table row and add headers
+				table.innerHTML += `<tr>
+										<th>Index Name</th>
+										<th>Primary Size</th>
+										<th>Primaries</th>
+										<th>Replicas</th>
+										<th>Recommended Primaries</th>
+										<th>Recommended Replicas</th>
+									</tr>`
+
+				// create table body 
+				var tableBody = document.createElement('tbody');
+				// add classes to tableBody 
+				tableBody.classList.add('displayBody')
+				// append tableBody to table 
+				table.appendChild(tableBody)
+
+				// loop through Indices Array
+				for (var i = 0; i < largeIndicesArray.length; i++) {
+					var row = `<tr>
+									<td>${largeIndicesArray[i].name}</td>
+									<td>${formatBytes(largeIndicesArray[i].primary_size_in_bytes)}</td>
+									<td>${largeIndicesArray[i].primaries}</td>
+									<td>${largeIndicesArray[i].replicas}</td>
+									<td>${largeIndicesArray[i].potential_primaries}</td>
+									<td>${largeIndicesArray[i].potential_replicas}</td>
+								</tr>`
+					tableBody.innerHTML += row
+				}
+			}
+		}
+		function buildTable(data) {
+			var table = document.getElementById("reportTable");
+			var count = 0;
+			for (key in data) {
+				if (key === 'index_pattern_recommendation_rollup' || key === 'empty_indices' || key === 'title' || key === 'large_indices' || key === 'node_stats') { }
+				else {
+					var row = table.rows[count++]
+					if (key === 'total_primary_size' || key === 'total_replica_size') {
+						let size = formatBytes(data[key]);
+						var colData = `<td>${size}</td>`
+					}
+					else {
+						var colData = `<td>${data[key]}</td>`
+					}
+					row.cells[1].innerHTML = colData
+				}
+			}
+		}
+		function cleartableRows() {
+			// clear summary table body
+			let table = document.getElementById("reportTable");
+			for (let i = 0; i < table.rows.length; i++) {
+				let row = table.rows[i]
+				row.cells[1].innerHTML = ""
+			}
+
+			// clear table caption 
+			tableCaption("")
+
+			// delete all old row body table divs
+			const oldRows = document.querySelectorAll('.rowBodyTable')
+			oldRows.forEach(row => {
+				row.remove();
+			});
+
+			// delete all old Index Pattern rows
+			const oldIndexRows = document.querySelectorAll('.rollUpRow')
+			oldIndexRows.forEach(row => {
+				row.remove();
+			});
+		}
+
+		function buildNodeTable(nodeStatsArray) {
+			// only create table if array is not null
+			if (nodeStatsArray != null) {
+				// Get Body Container
+				var bodyContainer = document.getElementById("bodyContainer");
+
+				// create a new row
+				var rowDiv = document.createElement('div');
+				// add class to row 
+				rowDiv.classList.add('row', 'rowBodyTable');
+				// append row to bodyContainer
+				bodyContainer.appendChild(rowDiv)
+
+				// create table div
+				var mainTableDiv = document.createElement('div');
+				// add classes to div 
+				mainTableDiv.classList.add('col-12', 'displayTableDiv')
+				// append div to row 
+				rowDiv.appendChild(mainTableDiv)
+
+				// create table
+				var table = document.createElement('table');
+				// add classes to table
+				table.classList.add('displayTable')
+				// append table to div
+				mainTableDiv.appendChild(table)
+
+				// create Title caption for table
+				var titleCaption = document.createElement('caption');
+				// write in caption 
+				titleCaption.innerHTML = "Node Distribution Table"
+				// append caption to table
+				table.appendChild(titleCaption)
+
+				// create table row and add headers
+				table.innerHTML += `<tr>
+										<th>Node Name</th>
+										<th>Total Shard Count</th>
+										<th>Primary Shard Count</th>
+										<th>Replica Shard Count</th>
+										<th>Total Size</th>
+										<th>Primary Size</th>
+										<th>Replica Size</th>
+									</tr>`
+
+				// create table body 
+				var tableBody = document.createElement('tbody');
+				// add classes to tableBody 
+				tableBody.classList.add('displayBody')
+				// append tableBody to table 
+				table.appendChild(tableBody)
+
+				// loop through Array
+				for (var i = 0; i < nodeStatsArray.length; i++) {
+					var totalShardCount = nodeStatsArray[i].primary_shards_count + nodeStatsArray[i].replica_shards_count
+					var totalSize = nodeStatsArray[i].primary_size_bytes + nodeStatsArray[i].replica_size_bytes
+					var row = `<tr>
+									<td>${nodeStatsArray[i].node_name}</td>
+									<td>${totalShardCount}</td>
+									<td>${nodeStatsArray[i].primary_shards_count}</td>
+									<td>${nodeStatsArray[i].replica_shards_count}</td>
+									<td>${formatBytes(totalSize)}</td>
+									<td>${formatBytes(nodeStatsArray[i].primary_size_bytes)}</td>
+									<td>${formatBytes(nodeStatsArray[i].replica_size_bytes)}</td>
+								</tr>`
+					tableBody.innerHTML += row
+				}
+			}
+		}
+		function listEmptyIndices(emptyIndicesArray) {
+			// only create table if array is not null
+			if (typeof emptyIndicesArray !== 'undefined') {
+				// Get Body Container
+				var bodyContainer = document.getElementById("bodyContainer");
+
+				// create a new row
+				var rowDiv = document.createElement('div');
+				// add class to row 
+				rowDiv.classList.add('row', 'rowBodyTable');
+				// append row to bodyContainer
+				bodyContainer.appendChild(rowDiv)
+
+				// create table div
+				var mainTableDiv = document.createElement('div');
+				// add classes to div 
+				mainTableDiv.classList.add('col-12', 'displayTableDiv')
+				// append div to row 
+				rowDiv.appendChild(mainTableDiv)
+
+				// create table
+				var table = document.createElement('table');
+				// add classes to table
+				table.classList.add('displayTable')
+				// append table to div
+				mainTableDiv.appendChild(table)
+
+				// create Title caption for table
+				var titleCaption = document.createElement('caption');
+				// write in caption 
+				titleCaption.innerHTML = "List of Empty Indices"
+				// append caption to table
+				table.appendChild(titleCaption)
+
+				// create count caption
+				var countCaption = document.createElement('caption');
+				// write in caption
+				countCaption.innerHTML = "Count: " + emptyIndicesArray.length
+				// append caption to table
+				table.appendChild(countCaption)
+
+				// Create empty table header
+				table.innerHTML += `<tr>
+										<th></th>
+										<th></th>
+										<th></th>
+									</tr>`
+
+				// create table body 
+				var tableBody = document.createElement('tbody');
+				// add classes to tableBody 
+				tableBody.classList.add('displayBody')
+				// append tableBody to table 
+				table.appendChild(tableBody)
+
+				// add an empty row to be changed
+				tableBody.innerHTML += `<tr><td></td><td></td><td></td></tr>`
+				var rowCount = 0;
+				for (var i = 0; i < emptyIndicesArray.length; i++) {
+					var row = tableBody.rows[rowCount]
+					var colData = `<td>${emptyIndicesArray[i]}</td>`
+					row.cells[i % 3].innerHTML = colData
+					if (i % 3 == 2) {
+						rowCount++;
+						// extra row when reach three in one line
+						tableBody.innerHTML += `<tr><td></td><td></td><td></td></tr>`
+					}
+				}
+			}
+		}
+		function patternRecommendBuilder(rollup) {
+			var bodyContainer = document.getElementById("bodyContainer");
+			const SingleIndexPattern = "--No Patterns--"
+
+			// loop through rollup array
+			for (var i = 0; i < rollup.length; i++) {
+				// if indexPatternRecommendation needs changes
+				if (rollup[i].need_changes) {
+					// check if pattern isIndependentIndexPattern or len of Indices array > 1
+					if (rollup[i].pattern === SingleIndexPattern || rollup[i].indices.length > 1) {
+						// create a new row once checks are passed
+						var rowDiv = document.createElement('div');
+						// add class to row 
+						rowDiv.classList.add('row', 'rollUpRow');
+						// append row to bodyContainer
+						bodyContainer.appendChild(rowDiv)
+						// if not independentIndexPattern create two tables
+						if (rollup[i].pattern !== SingleIndexPattern) {
+							// create leftTable div
+							var leftTableDiv = document.createElement('div');
+							// add classes to div 
+							leftTableDiv.classList.add('col-4', 'staticTableDiv')
+							// append div to row 
+							rowDiv.appendChild(leftTableDiv)
+
+							// create attribute and value table
+							var leftTable = document.createElement('table');
+							// add classes to table
+							leftTable.classList.add('displayTable')
+							// append table to div
+							leftTableDiv.appendChild(leftTable)
+
+							// create caption for table
+							var leftCaption = document.createElement('caption');
+							// write in caption 
+							leftCaption.innerHTML = `Summary of Index Pattern: <b>${rollup[i].pattern}</b>`
+							// append caption to table
+							leftTable.appendChild(leftCaption)
+
+							// add headers
+							leftTable.innerHTML += `<tr>
+												<th>Attribute</th>
+												<th>Value</th>
+											</tr>`
+							// create table body
+							var leftTableBody = document.createElement('tbody');
+							// add classes to tableBody
+							leftTableBody.classList.add('displayBody', 'attributeValueBody')
+							// append tableBody to table
+							leftTable.appendChild(leftTableBody)
+
+							// add data to leftTableBody
+							leftTableBody.innerHTML += `<tr>
+												<td>Pattern Name</td>
+												<td>${rollup[i].pattern}</td>
+											</tr>
+											<tr>
+												<td>Number of Indices in Pattern</td>
+												<td>${rollup[i].indices.length}</td>
+											</tr>
+											<tr>
+												<td>Primary Shards</td>
+												<td>${rollup[i].primary_shards}</td>
+											</tr>
+											<tr>
+												<td>Replica Shards</td>
+												<td>${rollup[i].replica_shards}</td>
+											</tr>
+											<tr>
+												<td>Size of Primary Indices</td>
+												<td>${formatBytes(rollup[i].size)}</td>
+											</tr>
+											<tr>
+												<td>Potential Primary Shards</td>
+												<td>${rollup[i].potential_primary_shards}</td>
+											</tr>
+											<tr>
+												<td>Potential Replica Shards</td>
+												<td>${rollup[i].potential_replica_shards}</td>
+											</tr>`
+
+							// create rightTable div
+							var rightTableDiv = document.createElement('div');
+							// add classes to div 
+							rightTableDiv.classList.add('col-8', 'staticTableDiv')
+							// append div to row
+							rowDiv.appendChild(rightTableDiv)
+
+							// create Indices table 
+							var rightTable = document.createElement('table')
+							// add classes to table 
+							rightTable.classList.add('displayTable')
+							// append table to div
+							rightTableDiv.appendChild(rightTable)
+
+							// create caption for table
+							var rightCaption = document.createElement('caption');
+							// write in caption 
+							rightCaption.innerHTML = `Recommendation by Index for Index Pattern: <b>${rollup[i].pattern}</b>`
+							// append caption to table
+							rightTable.appendChild(rightCaption)
+
+							// add headers to table 
+							rightTable.innerHTML += `<tr>
+													<th>Index Name</th>
+													<th>Primary Size</th>
+													<th>Primaries</th>
+													<th>Replicas</th>
+													<th>Recommended Primaries</th>
+													<th>Recommended Replicas</th>
+												</tr>`
+
+							// create table body 
+							var rightTableBody = document.createElement('tbody');
+							// add classes to tableBody 
+							rightTableBody.classList.add('displayBody')
+							// append tableBody to table 
+							rightTable.appendChild(rightTableBody)
+
+							// add data to rightTableBody
+							if (rollup[i].indices == null || rollup[i].indices.length == 0) {
+								rightTableBody.innerHTML += `<tr>
+												<td>NULL</td>
+												<td>NULL</td>
+												<td>NULL</td>
+												<td>NULL</td>
+												<td>NULL</td>
+												<td>NULL</td>
+											</tr>`
+							}
+							else {
+								// loop through Indices Array
+								for (var j = 0; j < rollup[i].indices.length; j++) {
+									var row = `<tr>
+													<td>${rollup[i].indices[j].name}</td>
+													<td>${formatBytes(rollup[i].indices[j].primary_size_in_bytes)}</td>
+													<td>${rollup[i].indices[j].primaries}</td>
+													<td>${rollup[i].indices[j].replicas}</td>
+													<td>${rollup[i].indices[j].potential_primaries}</td>
+													<td>${rollup[i].indices[j].potential_replicas}</td>
+												</tr>`
+									rightTableBody.innerHTML += row
+								}
+							}
+						}
+						// else just create one table
+						else {
+							// create table div
+							var tableDiv = document.createElement('div');
+							// add classes to div 
+							tableDiv.classList.add('col-12', 'displayTableDiv')
+							// append div to row
+							rowDiv.appendChild(tableDiv)
+
+							// create Indices table 
+							var table = document.createElement('table')
+							// add classes to table 
+							table.classList.add('displayTable')
+							// append table to div
+							tableDiv.appendChild(table)
+
+							// create caption for table
+							var caption = document.createElement('caption');
+							// write in caption 
+							caption.innerHTML = `Recommendation by Index for Index Pattern: <b>${rollup[i].pattern}</b>`
+							// append caption to table
+							table.appendChild(caption)
+
+							// add headers to table 
+							table.innerHTML += `<tr>
+													<th>Index Name</th>
+													<th>Primary Size</th>
+													<th>Primaries</th>
+													<th>Replicas</th>
+													<th>Recommended Primaries</th>
+													<th>Recommended Replicas</th>
+												</tr>`
+
+							// create table body 
+							var tableBody = document.createElement('tbody');
+							// add classes to tableBody 
+							tableBody.classList.add('displayBody')
+							// append tableBody to table 
+							table.appendChild(tableBody)
+
+							// add data to tableBody
+							if (rollup[i].indices == null || rollup[i].indices.length == 0) {
+								tableBody.innerHTML += `<tr>
+												<td>NULL</td>
+												<td>NULL</td>
+												<td>NULL</td>
+												<td>NULL</td>
+												<td>NULL</td>
+												<td>NULL</td>
+											</tr>`
+							}
+							else {
+								// loop through Indices Array
+								for (var j = 0; j < rollup[i].indices.length; j++) {
+									var row = `<tr>
+													<td>${rollup[i].indices[j].name}</td>
+													<td>${formatBytes(rollup[i].indices[j].primary_size_in_bytes)}</td>
+													<td>${rollup[i].indices[j].primaries}</td>
+													<td>${rollup[i].indices[j].replicas}</td>
+													<td>${rollup[i].indices[j].potential_primaries}</td>
+													<td>${rollup[i].indices[j].potential_replicas}</td>
+												</tr>`
+									tableBody.innerHTML += row
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	</script>
+</head>
+
+<body>
+	<div class="container-fluid" id="bodyContainer">
+
+		<div class="row" id="headRow">
+			<div class="col-2" id="headLogo">
+				<img src="img/AWS_logo_RGB.png" alt="AWS logo">
+			</div>
+			<!--image DIV-->
+			<div class="col-8">
+				<h1>ShardAnalyzer</h1>
+			</div>
+			<!--h1 Div-->
+		</div>
+		<!--row #1 Div-->
+
+		<div class="row" id="first">
+			<div class="col-6 formDiv">
+				<form class="inputForm" id="mainInputForm">
+					<label for="az">Availability Zones :</label>
+					<select id="az">
+						<option value=1>1</option>
+						<option value=2>2</option>
+						<option value=3>3</option>
+					</select>
+					<label for="cluster">Cluster Name :</label>
+					<input type="text" id="cluster" placeholder="SampleCluster">
+					<label for="customer">Customer Name :</label>
+					<input type="text" id="customer" placeholder="AWSCustomer">
+					<label for="search">Search vs Log Workload :</label>
+					<select id="search">
+						<option value="true">Search Workload</option>
+						<option value="false">Log Workload</option>
+					</select>
+					<label for="shardsize">Target Shard Size(GB):</label>
+					<input type="number" id="shardsize" placeholder=30>
+
+					<label for="inputOption">Input Option</label>
+					<select id="inputOption">
+						<option value="blank"></option>
+						<option value="endpointForm">Domain Endpoint</option>
+						<option value="rawForm">_cat/shards?v</option>
+					</select>
+
+					<div class="changeForm" id="blank"></div>
+					<!--empty div-->
+
+					<div class="changeForm" id="endpointForm" style="display:none">
+						<label for="endpoint">Domain Endpoint :</label>
+						<input type="text" id="endpoint" placeholder="https://sampleURL.region.es.amazonaws.com"
+							value="">
+						<label for="username">Username :</label>
+						<input type="text" id="username" placeholder="SampleUsername" value="">
+						<label for="password">Password :</label>
+						<input type="password" id="password" placeholder="SamplePassword" value="">
+						<div id="showPasswordDiv">
+							<input type="checkbox" onclick="passwordShowFunc()" id="showPassword">Show Password
+						</div>
+					</div>
+					<!--Endpoint Form-->
+
+					<div class="changeForm" id="rawForm" style="display:none">
+						<label for="rawInput">_cat/shards?v output :</label>
+						<textarea id="rawInput" rows="9" value=""></textarea>
+					</div>
+					<!--Raw Form-->
+
+					<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+					<script>
+						$(document).ready(function () {
+							$("#inputOption").on("change", function () {
+								$(".changeForm").hide();
+								$("#" + $(this).val()).show();
+							})
+						});
+					</script>
+
+					<div id="formButtons">
+						<!-- set button onClick method to call function we defined passing input values as parameters -->
+						<button type="button" class="btn btn-primary" onclick="callAPI(
+																				document.getElementById('az').value,
+																				document.getElementById('cluster').value,
+																				document.getElementById('customer').value,
+																				document.getElementById('search').value,
+																				document.getElementById('shardsize').value,
+																				document.getElementById('endpoint').value,
+																				document.getElementById('username').value,
+																				document.getElementById('password').value,
+																				document.getElementById('rawInput').value
+																			)">Analyze</button>
+						<button type="button" class="btn btn-primary" onclick="clearForm()">Clear Form </button>
+						<button type="button" class="btn btn-primary" onclick="cleartableRows()">Clear Tables </button>
+					</div>
+				</form>
+			</div>
+			<!--input form div-->
+
+			<div class="col-6 displayTableDiv">
+				<table class="displayTable">
+					<caption id="reportCaption">Cluster Report Table</caption>
+					<tr>
+						<th>Attribute</th>
+						<th>Value</th>
+					</tr>
+					<tbody class="displayBody" id="reportTable">
+						<tr>
+							<td>Cluster Name</td>
+							<td></td>
+						</tr>
+						<tr>
+							<td>Number of Availability Zones</td>
+							<td></td>
+						</tr>
+						<tr>
+							<td>Number of Data Nodes</td>
+							<td></td>
+						</tr>
+						<tr>
+							<td>Total Size of Primary Shards</td>
+							<td></td>
+						</tr>
+						<tr>
+							<td>Total Size of Replica Shards</td>
+							<td></td>
+						</tr>
+						<tr>
+							<td>Total Number of Shards</td>
+							<td></td>
+						</tr>
+						<tr>
+							<td>Total Number of Potential Shards</td>
+							<td></td>
+						</tr>
+						<tr>
+							<td>Total Number of Indices</td>
+							<td></td>
+						</tr>
+						<tr>
+							<td>Total Index Patterns</td>
+							<td></td>
+						</tr>
+						<tr>
+							<td>Target Shard Size (GB)</td>
+							<td></td>
+						</tr>
+						<tr>
+							<td>Need Adjustment</td>
+							<td></td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<!--table div-->
+		</div>
+		<!--id=first-->
+		<!--row #2 div-->
+	</div>
+	<!--class=container-->
+
+	<div class="container-fluid" id="referenceContainer">
+
+		<div class="row">
+			<div class="col-12">
+
+				<h2>Helpful References</h2>
+
+				<details class="styleDetails">
+					<summary class="detailCaption">High Level Concepts</summary>
+					<div class="detailBody">
+						<div>
+							In OpenSearch, the basic unit of data is a JSON document, and an <b>index</b> is simply a
+							collection of documents. A <b>shard</b> is a partition of an index that is used to
+							distribute data and processing evenly across all the data nodes in a cluster.
+							<b>Data nodes</b> are the main worker nodes of your cluster. They store data and perform all
+							data-related operations such as indexing, searching, and aggregating. Optimally, traffic is
+							split evenly among all data nodes, so each has uniform resource utilization.
+							To minimize risk in the event of failure, you can distribute nodes across two or three
+							<b>availability zones</b> in the same region. Availability zones are isolated locations
+							within each AWS Region.
+							Each shard is a full <b>Lucene index</b> which is a self-contained search engine. This
+							Lucene index is what allows for fast single-word or multi-word queries.
+							One important note is that indices and shards are not "free" as there is some level of
+							resource overhead for each, reagardless of shard size. A small set of large shards will use
+							less resources than a large set of small shards.
+							On the other hand, shard size affects the speed at which OpenSearch can move shards around
+							when rebalancing data following a failure. In this case, large shards make it harder to
+							recover from failure as more time is needed to rebalance shards to new nodes.
+							<b>Primary shards</b> are independent partitions of an index, and can handle write and read
+							requests. <b>Replica shards</b> are copies of primary shards desgined to protect data
+							against hardware failure and increase capacity to serve read requests.
+							As a result, only primary shards can accept indexing requests, but both replica and primary
+							shards can serve querying requests.
+							<b>Get _cat/shards</b> shows all indexes, the number of shards, the size of the shards, and
+							how they are distributed among the data nodes.
+						</div>
+						<!--details content div-->
+					</div>
+					<!--detailBody-->
+				</details>
+				<!--High Level Overview-->
+
+				<details class="styleDetails">
+					<summary class="detailCaption">Querying Data</summary>
+					<div class="detailBody">
+						<div>
+							When querying an index, all shards, regardless of which data node it is on, have to execute
+							the search query. Each of the shards is processing that query and the work that the shard
+							has to do is tied to how many documents match the query.
+							As a result, many small shards can speed up the processing per shard. However, if there
+							aren't a sufficient number of nodes in the cluster and many shards of the same index are
+							located on the same data node, then you will likely end up with slower query times.
+							This is because querying many small shards results in all the shards competing for the same
+							hardware resources. Having many small shards speeds up querying only when these queries can
+							be run in parallel by having shards spread across different data nodes.
+							As a result, to optimize query performance you will want smaller shard sizes with fewer
+							shards per node, and if your data grows, you would scale out with more data nodes.
+							Furthermore, having more replica shards can help increase query throughput, as both primary
+							and replica shards can serve query requests.
+							Data nodes have multiple CPUs. If a node has four CPUs, it can handle four concurrent
+							operations on four different shards.
+							It is important to manage per node resource usage and shard to CPU ratio: you don't want
+							more active shards than CPUs available.
+						</div>
+						<!--details content div-->
+					</div>
+					<!--detailBody-->
+				</details>
+				<!--Querying Data-->
+
+				<details class="styleDetails">
+					<summary class="detailCaption">Indexing Data</summary>
+					<div class="detailBody">
+						<div>
+							When indexing a document, OpenSearch will send the document to the data node that holds the
+							shard that will append the new data. Afterwards, any replica shards on different data nodes
+							will also be updated.
+							OpenSearch will help to distribute all new documents across all of the shards in an Index.
+							One thing to note is that the size of shards won't affect indexing throughput.
+							Having more shards tends to increase the write throughput as more shards means each shard
+							has to index less documents.
+							However, unless you have strict real-time requirements then it isn't necessary to increase
+							shard count just to have a little faster indexing, as having more shards will still lead to
+							more overhead and a more unstable cluster.
+							Unlike querying data, having more replica shards will decrease indexing throughput as each
+							replica shard is another copy that needs to be updated as well.
+						</div>
+						<!--details content div-->
+					</div>
+					<!--detailBody-->
+				</details>
+				<!--Indexing Data-->
+
+				<details class="styleDetails">
+					<summary class="detailCaption">Search Workloads vs Log Analytics Workloads</summary>
+					<div class="detailBody">
+						<div class="innerTitle">Search Workloads</div>
+						<div>
+							With search workloads, the read to write ratio tends to favor reading, thus there is usually
+							more querying than updating. In addition, the queries on search workloads tend to involve
+							more data and be more complex when it involves fuzzy matches, typo tolerance, and relevancy
+							tuning.
+							An example search workload could be a customer with a product catalog of thousands of items.
+							The customer then wants to be able to handle 3,000 concurrent site visitors and be able to
+							serve 100 queries per second.
+							From past experience, having a shard size of 10-30 GB tends to be the sweet spot for search
+							workloads as having smaller shards over more data nodes will help to maximize query times.
+						</div>
+						<!--search content div-->
+						<div class="innerTitle">Log Workloads</div>
+						<div>
+							On the other hand, log analytics workloads tend to involve indexing more data with only some
+							querying for analysis. Querying log analytics workloads tends to involve less data and be
+							less complex as customers usually only run simple aggregations and filters on recent data.
+							Since you don't need to optimize for fast queries, you can afford to have larger shards.
+							An example log analytics workload could be a customer who has 400 GB of sales logs that need
+							to be ingested daily. The customer wants to be able to run fast queries on all data in the
+							last 7 days, and keep all data older than 7 days in cold storage.
+							From past experience, customers should aim to have a target shard size of 30-50 GB.
+
+						</div>
+						<!--log content div-->
+						<div class="innerTitle">General Advice</div>
+						<div>
+							Ultimatley, the right target shard size will be vastly different for each use case depending
+							on many different factors like data size, expected data growth, workload balance, response
+							time tolerance, hardware, fault tolerance, and much more.
+							The correct answer can only come from personal testing and analysis. The important thing to
+							keep in mind is why you are sharding your data.
+							You want to be able to distribute your workload among multiple machines, yet after a certain
+							point more shards will just add increased overhead without any more advantage in
+							distributing the workload.
+							Finding the right shard size is about finding that balance for your cluster's needs.
+							More information on sharding best practices can be found <a
+								href="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/bp.html#bp-sharding-strategy"
+								target="_blank">here</a>.
+						</div>
+						<!--general content div-->
+					</div>
+					<!--detailBody-->
+				</details>
+				<!--Search Workloads-->
+
+				<details class="styleDetails">
+					<summary class="detailCaption">Understanding the Tables</summary>
+					<div class="detailBody">
+						<div class="innerTitle">Indices with Shards Greater than 50GB</div>
+						<div>
+							As the title suggests, this table will show all indices that have shards greater than 50GB.
+							Whether you have a search workload or log analytics workload, having shards over 50 GB is
+							usually not recommended.
+							Having too large of shards makes it more difficult for OpenSearch to rebalance shards and to
+							recover from failure. Furthermore, if you have the available data nodes, having large shards
+							can make it hard to distribute workloads leading to slower query times.
+							The table will then provide a recommended primary shard and replica shard count to help
+							resolve the issue.
+						</div>
+						<!--Greater 50GB content div-->
+
+						<div class="innerTitle">Node Distribution table</div>
+						<div>
+							This table shows the total number of shards allocated to each node and the total size of the
+							data within the node. It also gives further breakdowns for primary and replica shards.
+							While OpenSearch tries to distribute the number of shards evenly across nodes, it doesn't
+							account for the size of each shard. The Node Dsitribution table helps to identify if there
+							are any major discrepencies in how the workload is distributed across different nodes.
+						</div>
+						<!--Node Distribution content div-->
+
+						<div class="innerTitle">Empty Indices table</div>
+						<div>
+							As stated above, OpenSearch allocates shards to data nodes based on shard count rather than
+							shard size. As a result, having empty indices and thus empty shards can play a major role in
+							skewing node work distribution.
+							Furthermore, this leaves uncollectable objects in memory and more overhead for data nodes as
+							shards still require overhead no matter how much data is stored in them.
+							Empty Indices may come from your current rollover index polices or from testing. These empty
+							indices should be delted if they are not going to be populated.
+						</div>
+						<!--Empty Indices-->
+
+						<div class="innerTitle">Summary of Index Pattern and Recommendation by Index</div>
+						<div>
+							An index pattern is simply a grouping of indexes; this allows you to store data in multiple
+							indices, but still access all of the data as a group.
+							The Index Pattern Attributes table provides a break down of each Index Pattern that has been
+							identified as needing changes. The table will show the current total number of shards and
+							provide a recommendation.
+							The Index pattern recommendation table will then give a breakdown of the shard count and
+							recommended shard count for each index within the pattern.
+							Looking at the indexes as a group can help to identify any changes needed for an index
+							template, or to help see if there are any issues spanning multiple indices.
+						</div>
+						<!--Pattern content-->
+					</div>
+					<!--detailBody-->
+				</details>
+				<!--Different Tables Details-->
+
+				<details class="styleDetails">
+					<summary class="detailCaption">Implementing Changes</summary>
+					<div class="detailBody">
+						<div>
+							Once you identify an Index that needs to be changed, here are some steps you can take to
+							help resolve the issue.
+						</div>
+						<!--fixing shard content-->
+						<div class="innerTitle">Split Index API</div>
+						<div>
+							The split index API will split an existing index into a new index with more primary shards.
+							More information can be found <a
+								href="https://www.elastic.co/guide/en/elasticsearch/reference/7.10/indices-split-index.html"
+								target="_blank">here</a> and <a
+								href="https://opensearch.org/docs/1.2/opensearch/rest-api/index-apis/split/"
+								target="_blank">here</a>.
+						</div>
+						<!--Split Index API content-->
+						<div class="innerTitle">ReIndex API</div>
+						<div>
+							You could also use the reindex API which would allow you to copy all or a subset of
+							documents from one index to another.
+							More information can be found <a
+								href="https://www.elastic.co/guide/en/elasticsearch/reference/7.10/docs-reindex.html"
+								target="_blank">here</a> and <a
+								href="https://opensearch.org/docs/latest/opensearch/reindex-data/"
+								target="_blank">here</a>.
+						</div>
+						<!--ReIndex API content-->
+						<div class="innerTitle">Creating a New Index</div>
+						<div>
+							When using the reindex API, you might want to create a new index with your desired
+							configurations to copy your old documents into.
+							More information on creating an index can be found <a
+								href="https://opensearch.org/docs/latest/opensearch/rest-api/index-apis/create-index/"
+								target="_blank">here</a>.
+						</div>
+						<!--Creating New Index API content-->
+						<div class="innerTitle">Rollover Index API</div>
+						<div>
+							If you have data being consistently streamed to your cluster, you can use the rollover index
+							API to automatically create or delete indices after certain conditions are met.
+							This could help to keep shard sizes under control and help reduce memory and disk
+							footprints.
+							More information can be found <a
+								href="https://opensearch.org/docs/latest/im-plugin/ism/policies/#rollover"
+								target="_blank">here</a>.
+						</div>
+						<!--Rollover Index API content-->
+						<div class="innerTitle">Index Templates</div>
+						<div>
+							Index Templates allow you to specify predefined mappings and settings for any new indexes
+							created using the template. This allows you to set things like primary shard count and
+							replica shard count for future management.
+							More information on index templates can be found <a
+								href="https://opensearch.org/docs/latest/opensearch/index-templates/"
+								target="_blank">here</a>.
+						</div>
+						<!--Index templates-->
+					</div>
+					<!--detailBody-->
+				</details>
+				<!--Implementing Changes details-->
+			</div>
+			<!--column div-->
+		</div>
+		<!--row div-->
+	</div>
+	<!--foot container-->
+
+	<div class="container-fluid" id="footerContainer">
+		<div class="row">
+			<div class="col-12">
+
+			</div>
+			<!--column div-->
+		</div>
+		<!--row div-->
+	</div>
+	<!--footerContainer-->
+
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/js/bootstrap.bundle.min.js"
+		integrity="sha384-pprn3073KE6tl6bjs2QrFaJGz5/SUsLqktiwsUTF55Jfv3qYSDhgCecCxMW52nD2"
+		crossorigin="anonymous"></script>
+</body>
+
+</html>

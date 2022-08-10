@@ -1,0 +1,159 @@
+*{
+	margin: 0;
+	box-sizing: border-box;
+}
+body{
+	color: #232F3E;
+	font-family: sans-serif;
+	font-weight: 300;
+}
+#headRow{
+	margin: 5rem 0rem 3rem 0rem;
+}
+#headLogo {
+	display:flex;
+	justify-content:space-evenly;
+}
+#headLogo img{
+	width: 120px;
+}
+h1{
+	font-size:48px;
+	text-align:center;
+}
+#bodyContainer{
+	padding: 0 3rem;
+}
+#reportTable td{
+	width: 50%;
+}
+
+.formDiv {
+	padding:2rem;
+}
+.inputForm label {
+	display:block;
+    padding:1rem 0 .25rem;
+    text-transform:uppercase;
+    font-size:14px;
+}
+.inputForm input, .inputForm textarea, .inputForm select {
+	display:block;
+    width:100%;
+    border:2px solid #2074d5;
+    padding:.5rem;
+    font-size:18px;
+    border-radius:5px;
+}
+#showPasswordDiv{
+	padding:.5rem 0 .25rem;
+	display:flex;
+	justify-content: left;
+}
+#showPassword{
+	width: 20px;
+	height: auto;
+	margin-right: 10px;
+}
+#formButtons{
+	display:flex;
+	justify-content: space-between;
+}
+.inputForm button{
+	background:#ff9900;
+	text-transform:uppercase;
+	border:0;
+	padding:.5rem;
+	margin:1rem 0;
+	width:20%;
+}
+.displayTableDiv{
+	padding: 2rem 0;
+	display:flex;
+}
+.displayTable{
+	border-collapse: collapse;
+	width: 100%;
+}
+.displayTable th {
+	padding: 10px 5px;
+	background-color: grey;
+	text-align:center;
+}
+.displayBody td {
+	padding: 10px;
+	text-align: center;
+}
+.displayTable caption{
+	font-weight: bold;
+	font-size: 22px;
+	caption-side: top;
+}
+.displayTable tr:nth-child(even){
+	background-color: #D3D3D3;
+}
+.displayTable tr:nth-child(odd){
+	background-color: #f4f4f4;
+}
+
+.staticTableDiv{
+	padding: 2rem 0;
+}
+
+.attributeValueBody td{
+	width: 50%;
+}
+
+#referenceContainer{
+	padding: 3rem 3rem 5rem 3rem;
+}
+
+.styleDetails{
+	padding:1rem;
+	border:1px solid #ff9900;
+	border-radius:5px;
+	margin: 1rem 0;
+	transition: all 0.4s ease-in-out;
+	max-height: 75px;
+	overflow: hidden;
+}
+.detailCaption{
+	font-weight: bold;
+	color: #003181;
+	cursor: pointer;
+	font-size: 110%;
+}
+.styleDetails[open] summary{
+	padding-bottom: 1rem;
+}
+
+.styleDetails[open] {
+	background-color: #EBECF0;
+	max-height: 1000px;
+}
+.innerTitle{
+	font-size: 110%;
+	font-weight: bold;
+}
+.detailBody{
+	padding: 0 2rem;
+}
+
+#footerContainer{
+	height: 200px;
+	background-color: #404040;
+}
+
+caption b{
+	color: #003181;
+}
+
+.errorTextBox{
+	height: 150px;
+	line-height: 150px;
+	text-align:center;
+	color: #D8000C;
+	background-color: #FFBABA;
+	border: 1px solid;
+	font-size: 20px;
+}
