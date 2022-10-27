@@ -7,7 +7,10 @@ from shard_analyzer_cdk.shard_analyzer_cdk_stack import ShardAnalyzerCdkStack
 
 
 app = cdk.App()
-ShardAnalyzerCdkStack(app, "ShardAnalyzerCdkStack",
+ShardAnalyzerCdkStack(app, "ShardAnalyzerCdkStack", 
+    #synthesizer=cdk.DefaultStackSynthesizer(
+    #    deploy_role_arn="arn:aws:iam::686834348866:role/Admin"
+    #)
     # If you don't specify 'env', this stack will be environment-agnostic.
     # Account/Region-dependent features and context lookups will not work,
     # but a single synthesized template can be deployed anywhere.

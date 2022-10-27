@@ -1,4 +1,5 @@
 from aws_cdk import (
+    CfnOutput,
     Stack,
     aws_lambda as _lambda,
     aws_apigateway as apigw,
@@ -11,10 +12,10 @@ from aws_cdk import (
     aws_s3 as s3,
     aws_s3_deployment as s3deploy,
     Duration,
+    aws_cloudfront as cloudfront,
+    aws_cloudfront_origins as origins,
 )
 from constructs import Construct
-import boto3
-import json
 import random
 
 # DOMAIN_NAME = 'ShardAnalyzer-OpenSearch-Logs'
@@ -58,8 +59,8 @@ class ShardAnalyzerCdkStack(Stack):
             },
             use_unsigned_basic_auth=True,
             fine_grained_access_control={
-                "master_user_name": 'admin',
-                "master_user_password": SecretValue.unsafe_plain_text('HappyClip#1!')
+                "master_user_name": MASTER_USERNAME,
+                "master_user_password": SecretValue.unsafe_plain_text(MASTER_PASSWORD)
             },
         )
 
@@ -82,16 +83,6 @@ class ShardAnalyzerCdkStack(Stack):
         lambda_func_cw_logs.add_to_role_policy(iam.PolicyStatement(actions=['logs:*'],
             resources=['*']))
 
-        # Add permission to create CW logs trigger for all specified region and current account, as region does not have an option to be wildcard
-        account_id = boto3.client("sts").get_caller_identity()["Account"]
-        for region in json.loads(REGIONS_TO_MONITOR):
-            lambda_func_cw_logs.add_permission(
-                id="lambda-cw-logs-permission-" + region,
-                principal=iam.ServicePrincipal("logs.amazonaws.com"),
-                action="lambda:InvokeFunction",
-                source_arn="arn:aws:logs:" + region + ":" + account_id + ":*:*:*"
-            )
-
         # create subscription filter
         logs.SubscriptionFilter(self, "lambdaSubscription",
             log_group=my_lambda.log_group,
@@ -103,17 +94,23 @@ class ShardAnalyzerCdkStack(Stack):
         domain.grant_read_write(lambda_func_cw_logs.role)
 
         # create random int to append to bucket name
-        randomInt = random.randint(0, 1000)
+        randomInt = random.randint(0, 10000)
         # create S3 bucket
         website_bucket = s3.Bucket(self, "ShardAnalyzerWebsiteBucket" + str(randomInt), 
-            public_read_access=True,
-            website_index_document="index.html",
         )
         
         # add files to s3 bucket
         s3deploy.BucketDeployment(self, "ShardAnalyzerDeployWebsite",
             sources=[s3deploy.Source.asset("HTML")],
             destination_bucket=website_bucket,
+        )
+
+        # Create cloudfront for public entry point
+        originAccessIdentity = cloudfront.OriginAccessIdentity(self, 'OriginAccessIdentity')
+        website_bucket.grant_read(originAccessIdentity)
+        distribution = cloudfront.Distribution(self, "Distribution",
+            default_root_object='index.html',
+            default_behavior=cloudfront.BehaviorOptions(origin=origins.S3Origin(website_bucket, origin_access_identity=originAccessIdentity))
         )
 
         # Create trigger function that will add lambda_func_cw_logs IAM role to all_access backend role and will add APIGW endpoint to website
@@ -123,16 +120,6 @@ class ShardAnalyzerCdkStack(Stack):
             code = _lambda.Code.from_asset('triggerfunction'),
             handler='hello.handler',
             timeout=Duration.minutes(5)
-        )
-
-        # add policy to allow trigger function to put objects in S3
-        # trigger_function.role.add_managed_policy(iam.ManagedPolicy.from_managed_policy_arn(self, "s3FullAccess", "arn:aws:iam::aws:policy/AmazonS3FullAccess"))
-        trigger_function.add_to_role_policy(
-            iam.PolicyStatement(
-                # principals=[iam.ArnPrincipal("arn:aws:iam::123456789012:root")],
-                actions=["s3:PutObject"],
-                resources=[website_bucket.bucket_arn],
-            )
         )
 
         # grant lambda function write to s3 bucket
@@ -149,16 +136,7 @@ class ShardAnalyzerCdkStack(Stack):
         # make sure trigger function executes after deployment
         trigger_function.execute_after(self)
 
-        # If you are getting an error: API: s3:PutBucketPolicy Access Denied
-        # then make sure the "Block public access (account settings)" is turned off in the S3 Console.
-
-        #domain.add_access_policies(
-        #    iam.PolicyStatement(
-        #        actions=["es:*"],
-        #        effect=iam.Effect.ALLOW,
-        #        # principals=[iam.ArnPrincipal(lambda_func_cw_logs.function_arn)],
-        #        #principals=[iam.AnyPrincipal()],
-        #        principals=[iam.AccountPrincipal(account_id)],
-        #        resources=[domain.domain_arn]
-        #    )
-        #)
+        # CFN Outputs
+        CfnOutput(self, "Cloudfront Distribution Domain name (URL to access website): ", value=distribution.distribution_domain_name)
+        CfnOutput(self, "OpenSearch Dashboard URL", value="https://" + domain.domain_endpoint + "/_dashboards")
+        CfnOutput(self, "OpenSearch Credentials", value="Username: " + MASTER_USERNAME + "\nPassword: " + MASTER_PASSWORD)
